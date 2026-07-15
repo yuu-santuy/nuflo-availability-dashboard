@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NUFLO MCIII - Log Data Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+    <header class="navbar">
+        <div class="logo">PT Mobilkom - Sensor Nuflo MCIII Dashboard</div>
+    </header>
+
+    <main class="container">
+        <section id="upload-section" class="card">
+            <div id="drop-zone" class="drop-zone">
+                <p>Tarik & Lepas file Excel (.xls, .xlsx) ke sini</p>
+                <p>atau</p>
+                <input type="file" id="file-input" accept=".xls,.xlsx" hidden>
+                <button id="btn-browse" class="btn btn-primary">Pilih File</button>
+            </div>
+            <div id="file-info" class="hidden">
+                <p id="file-name"></p>
+                <button id="btn-process" class="btn btn-success">Proses Data</button>
+            </div>
+            <div id="error-message" class="error-text hidden"></div>
+        </section>
+
+        <div id="loading-overlay" class="hidden">
+            <div class="spinner"></div>
+            <h3 id="loading-text">Memulai proses...</h3>
+        </div>
+
+        <section id="dashboard-section" class="hidden">
+            <div class="header-action">
+                <h2>Ringkasan Data</h2>
+                <div class="export-buttons">
+                    <button id="btn-export-excel" class="btn btn-outline">Export Excel</button>
+                    <button id="btn-export-pdf" class="btn btn-outline">Export PDF</button>
+                    <button id="btn-reset" class="btn btn-danger">Upload Ulang</button>
+                </div>
+            </div>
+
+            <div id="diagnostic-panel" class="card diagnostic-panel">
+                <div class="diagnostic-header" id="diagnostic-toggle">
+                    <h3>🔍 Info Diagnostik File (cek di sini kalau ragu datanya salah baca)</h3>
+                    <span id="diagnostic-arrow">▼</span>
+                </div>
+                <div id="diagnostic-body" class="diagnostic-body hidden"></div>
+            </div>
+
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h4>Total Sumur</h4>
+                    <h2 id="sum-total-wells">0</h2>
+                </div>
+                <div class="summary-card">
+                    <h4>Rata-rata Availability</h4>
+                    <h2 id="sum-avg-avail">0%</h2>
+                </div>
+                <div class="summary-card border-green">
+                    <h4>Status 1 (Bisa Ditagih)</h4>
+                    <h2 id="sum-status-1" class="text-green">0</h2>
+                </div>
+                <div class="summary-card border-red">
+                    <h4>Status 0 (Belum Ditagih)</h4>
+                    <h2 id="sum-status-0" class="text-red">0</h2>
+                </div>
+            </div>
+
+            <div class="chart-container card">
+                <div class="chart-header">
+                    <h3>Tren Availability Harian</h3>
+                    <select id="well-selector">
+                        <option value="">Pilih Sumur...</option>
+                    </select>
+                </div>
+                <canvas id="trendChart"></canvas>
+            </div>
+
+            <div class="table-container card">
+                <div class="table-controls">
+                    <input type="text" id="search-input" placeholder="Cari Nama Sumur / Tanggal...">
+                    <select id="filter-status">
+                        <option value="all">Semua Status</option>
+                        <option value="1">Status 1 (>= 90%)</option>
+                        <option value="0">Status 0 (< 90%)</option>
+                    </select>
+                </div>
+                <div class="table-responsive">
+                    <table id="result-table">
+                        <thead>
+                            <tr>
+                                <th data-sort="node">Nama Sumur ⇕</th>
+                                <th data-sort="date">Tanggal ⇕</th>
+                                <th data-sort="count">Jml Baris ⇕</th>
+                                <th data-sort="avail">Availability (%) ⇕</th>
+                                <th data-sort="status">Status ⇕</th>
+                                <th>Avg Flowrate</th>
+                                <th>Avg Temp (°C)</th>
+                                <th>Avg Supply V</th>
+                                <th>Avg Battery V</th>
+                                <th>Verifikasi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Verifikasi Manual -->
+    <div id="verify-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3 id="verify-title">Verifikasi Manual</h3>
+                <button id="verify-close" class="btn-close">&times;</button>
+            </div>
+            <div id="verify-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
