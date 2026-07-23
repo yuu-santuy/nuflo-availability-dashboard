@@ -28,6 +28,10 @@
 
     <!-- ===================== UPLOAD SECTION ===================== -->
     <section id="upload-section" class="card upload-card">
+        <div id="upload-mode-toggle" class="upload-mode-toggle hidden">
+            <button class="mode-btn active" data-mode="new">🆕 Upload Baru <span>(ganti semua data)</span></button>
+            <button class="mode-btn" data-mode="append">➕ Tambahkan ke Data Sekarang <span>(gabung otomatis, anti duplikat)</span></button>
+        </div>
         <div id="dropzone" class="dropzone">
             <div class="dropzone-icon">📂</div>
             <p class="dropzone-text">Seret file ke sini, atau klik untuk pilih file</p>
@@ -60,6 +64,15 @@
                 <span id="diagnostic-arrow">▼</span>
             </div>
             <div id="diagnostic-body" class="diagnostic-body hidden"></div>
+        </div>
+
+        <!-- Riwayat Upload -->
+        <div id="upload-history-panel" class="card history-panel hidden">
+            <div class="diagnostic-header" id="history-toggle">
+                <h3>🕒 Riwayat Upload &amp; Penggabungan Data</h3>
+                <span id="history-arrow">▼</span>
+            </div>
+            <div id="history-body" class="diagnostic-body hidden"></div>
         </div>
 
         <!-- Ringkasan Kartu -->
@@ -209,6 +222,19 @@
         <div id="verify-body" class="modal-body"></div>
     </div>
 </div>
+
+<!-- Modal Laporan Penggabungan Data -->
+<div id="merge-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>🔄 Laporan Penggabungan Data</h3>
+            <button id="merge-modal-close" class="btn-close">&times;</button>
+        </div>
+        <div id="merge-modal-body" class="modal-body"></div>
+    </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
 
 <footer class="page-footer">
     <p>PT Mobilkom Telekomindo — NUFLO Availability &amp; Billing Dashboard</p>

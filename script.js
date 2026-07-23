@@ -9,7 +9,9 @@ const appState = {
     customPrices: {},       // { nodeID: harga }
     filters: { search: '', well: 'ALL', status: 'ALL' },
     sort: { key: 'date', dir: 'asc' },
-    chart: null
+    chart: null,
+    uploadMode: 'new',      // 'new' atau 'append'
+    uploadHistory: []       // riwayat tiap file yang diproses
 };
 
 const REQUIRED_COLS = ['NodeID', 'Date', 'ScanTime', 'Flowrate', 'InternalTemperature', 'SupplyVoltage', 'BatteryVoltage'];
@@ -55,6 +57,14 @@ function handleFileSelected(file) {
     fileNameDisplay.textContent = `File terpilih: ${file.name}`;
     fileInfo.classList.remove('hidden');
 }
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        appState.uploadMode = btn.dataset.mode;
+    });
+});
 
 function showUploadError(msg) {
     uploadError.textContent = `⚠ ${msg}`;
@@ -199,23 +209,91 @@ async function processFile(file) {
 
         await setLoadingStep('Menyusun laporan...', 100);
 
-        appState.allData = processedData;
+        const isFirstUpload = appState.allData.length === 0;
+        const mode = isFirstUpload ? 'new' : appState.uploadMode;
+
+        let mergeReport = null;
+        if (mode === 'new') {
+            appState.allData = processedData;
+            mergeReport = { mode: 'new', added: processedData.length, updated: 0, skipped: 0, details: [] };
+        } else {
+            mergeReport = mergeIntoExistingData(processedData);
+        }
+
         appState.sheetDiagnostics = sheetDiagnostics;
         appState.usedSheetNames = usedSheetNames;
         appState.validRowCount = rawData.length;
+        appState.uploadHistory.push({
+            fileName: file.name,
+            timestamp: new Date(),
+            mode,
+            added: mergeReport.added,
+            updated: mergeReport.updated,
+            skipped: mergeReport.skipped
+        });
 
         populateWellDropdowns();
         renderDiagnosticPanel();
+        renderUploadHistory();
         applyFiltersAndRender();
 
         loadingOverlay.classList.add('hidden');
         dashboardSection.classList.remove('hidden');
+        document.getElementById('upload-mode-toggle').classList.remove('hidden');
+        fileInput.value = '';
+        selectedFile = null;
+
+        if (mode === 'append') {
+            showMergeReportModal(mergeReport);
+        } else {
+            showToast(`✅ Data berhasil diproses: ${processedData.length} baris (sumur × tanggal).`, 'success');
+        }
 
     } catch (err) {
         loadingOverlay.classList.add('hidden');
         fileInfo.classList.remove('hidden');
         showUploadError(err.message);
     }
+}
+
+// Membandingkan 2 hasil hitungan (grup sumur+tanggal) apakah benar-benar identik
+function isGroupIdentical(a, b) {
+    return a.rowCount === b.rowCount &&
+        Math.abs(a.sumFlowrate - b.sumFlowrate) < 0.0001 &&
+        Math.abs(a.sumTemp - b.sumTemp) < 0.0001 &&
+        Math.abs(a.sumSupplyV - b.sumSupplyV) < 0.0001 &&
+        Math.abs(a.sumBatteryV - b.sumBatteryV) < 0.0001;
+}
+
+// Gabungkan hasil hitungan baru ke data yang sudah ada:
+// - Tanggal baru (belum ada sebelumnya)   -> DITAMBAHKAN
+// - Tanggal sudah ada & datanya identik   -> DILEWATI (skip)
+// - Tanggal sudah ada & datanya beda      -> DIPERBARUI (update/replace)
+function mergeIntoExistingData(newGroups) {
+    const existingMap = new Map(appState.allData.map(g => [`${g.nodeID}_${g.date}`, g]));
+    const details = [];
+    let added = 0, updated = 0, skipped = 0;
+
+    for (const newGroup of newGroups) {
+        const key = `${newGroup.nodeID}_${newGroup.date}`;
+        const existing = existingMap.get(key);
+
+        if (!existing) {
+            existingMap.set(key, newGroup);
+            added++;
+            details.push({ type: 'added', nodeID: newGroup.nodeID, date: newGroup.date, info: `${newGroup.rowCount} baris` });
+        } else if (isGroupIdentical(existing, newGroup)) {
+            skipped++;
+            details.push({ type: 'skipped', nodeID: newGroup.nodeID, date: newGroup.date, info: `${existing.rowCount} baris (sama persis, tidak dihitung ulang)` });
+        } else {
+            existingMap.set(key, newGroup);
+            updated++;
+            details.push({ type: 'updated', nodeID: newGroup.nodeID, date: newGroup.date, info: `${existing.rowCount} baris → ${newGroup.rowCount} baris` });
+        }
+    }
+
+    appState.allData = Array.from(existingMap.values()).sort((a, b) => a.nodeID.localeCompare(b.nodeID) || a.date.localeCompare(b.date));
+    return { mode: 'append', added, updated, skipped, details };
 }
 
 function setLoadingStep(message, percent) {
@@ -312,6 +390,82 @@ function renderDiagnosticPanel() {
 document.getElementById('diagnostic-toggle').addEventListener('click', () => {
     const body = document.getElementById('diagnostic-body');
     const arrow = document.getElementById('diagnostic-arrow');
+    body.classList.toggle('hidden');
+    arrow.textContent = body.classList.contains('hidden') ? '▼' : '▲';
+});
+
+// ---------------------- TOAST NOTIFICATION ----------------------
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+}
+
+// ---------------------- MODAL LAPORAN PENGGABUNGAN ----------------------
+function showMergeReportModal(report) {
+    const body = document.getElementById('merge-modal-body');
+    const iconFor = t => t === 'added' ? '🟢' : t === 'updated' ? '🟡' : '⚪';
+    const labelFor = t => t === 'added' ? 'Ditambahkan (tanggal baru)' : t === 'updated' ? 'Diperbarui (data berubah)' : 'Dilewati (sudah sama persis)';
+
+    let html = `
+        <div class="merge-summary-grid">
+            <div class="merge-summary-item merge-added"><h2>${report.added}</h2><p>Ditambahkan</p></div>
+            <div class="merge-summary-item merge-updated"><h2>${report.updated}</h2><p>Diperbarui</p></div>
+            <div class="merge-summary-item merge-skipped"><h2>${report.skipped}</h2><p>Dilewati</p></div>
+        </div>
+        <p class="merge-explain">Data lama tetap aman. Sistem hanya menambah tanggal baru, memperbarui tanggal yang datanya berubah, dan melewati tanggal yang sudah persis sama — tidak ada yang dihitung dua kali.</p>
+    `;
+
+    if (report.details.length > 0) {
+        html += `<div class="verify-table-wrap"><table>
+            <thead><tr><th>Status</th><th>Nama Sumur</th><th>Tanggal</th><th>Keterangan</th></tr></thead>
+            <tbody>${report.details.map(d => `
+                <tr>
+                    <td>${iconFor(d.type)} ${labelFor(d.type)}</td>
+                    <td>${d.nodeID}</td>
+                    <td>${d.date}</td>
+                    <td>${d.info}</td>
+                </tr>
+            `).join('')}</tbody>
+        </table></div>`;
+    }
+
+    body.innerHTML = html;
+    document.getElementById('merge-modal').classList.remove('hidden');
+}
+document.getElementById('merge-modal-close').addEventListener('click', () => document.getElementById('merge-modal').classList.add('hidden'));
+document.getElementById('merge-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'merge-modal') e.target.classList.add('hidden');
+});
+
+// ---------------------- RIWAYAT UPLOAD ----------------------
+function renderUploadHistory() {
+    const panel = document.getElementById('upload-history-panel');
+    const body = document.getElementById('history-body');
+    if (appState.uploadHistory.length === 0) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+
+    body.innerHTML = `<table><thead><tr><th>Waktu</th><th>Nama File</th><th>Mode</th><th>Ditambah</th><th>Diperbarui</th><th>Dilewati</th></tr></thead><tbody>
+        ${appState.uploadHistory.map(h => `
+            <tr>
+                <td>${h.timestamp.toLocaleTimeString('id-ID')}</td>
+                <td>${h.fileName}</td>
+                <td>${h.mode === 'new' ? '🆕 Upload Baru' : '➕ Tambah Data'}</td>
+                <td>${h.added}</td><td>${h.updated}</td><td>${h.skipped}</td>
+            </tr>
+        `).join('')}
+    </tbody></table>`;
+}
+document.getElementById('history-toggle').addEventListener('click', () => {
+    const body = document.getElementById('history-body');
+    const arrow = document.getElementById('history-arrow');
     body.classList.toggle('hidden');
     arrow.textContent = body.classList.contains('hidden') ? '▼' : '▲';
 });
